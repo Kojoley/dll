@@ -9,9 +9,6 @@
 #define BOOST_DLL_LIBRARY_INFO_HPP
 
 #include <boost/dll/config.hpp>
-#include <boost/mpl/max_element.hpp>
-#include <boost/mpl/vector_c.hpp>
-#include <boost/aligned_storage.hpp>
 #include <boost/noncopyable.hpp>
 #include <boost/predef/os.h>
 #include <boost/predef/architecture.h>
@@ -42,20 +39,19 @@ class library_info: private boost::noncopyable {
 private:
     std::ifstream f_;
 
-    boost::aligned_storage< // making my own std::aligned_union from scratch. TODO: move to TypeTraits
-        boost::mpl::deref<
-            boost::mpl::max_element<
-                boost::mpl::vector_c<std::size_t,
-                    sizeof(boost::dll::detail::elf_info32),
-                    sizeof(boost::dll::detail::elf_info64),
-                    sizeof(boost::dll::detail::pe_info32),
-                    sizeof(boost::dll::detail::pe_info64),
-                    sizeof(boost::dll::detail::macho_info32),
-                    sizeof(boost::dll::detail::macho_info64)
-                >
-            >::type
-        >::type::value
-    >::type impl_;
+    union impl_type {
+        union info_type {
+            boost::dll::detail::elf_info32 elf_info32_;
+            boost::dll::detail::elf_info64 elf_info64_;
+            boost::dll::detail::pe_info32 pe_info32_;
+            boost::dll::detail::pe_info64 pe_info64_;
+            boost::dll::detail::macho_info32 macho_info32_;
+            boost::dll::detail::macho_info64 macho_info64_;
+        };
+        char buf[sizeof(info_type)];
+
+        void* address() { return &buf; }
+    } impl_;
 
     /// @cond
     boost::dll::detail::x_info_interface& impl() BOOST_NOEXCEPT {
