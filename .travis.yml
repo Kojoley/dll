@@ -18,7 +18,7 @@ env:
   global:
     # Autodetect Boost branch by using the following code: - BOOST_BRANCH=$TRAVIS_BRANCH
     # or just directly specify it
-    - BOOST_BRANCH=develop && [ "$TRAVIS_BRANCH" == "master" ] && BOOST_BRANCH=master || true
+    - BOOST_BRANCH=${TRAVIS_BRANCH/^((?!develop|master).)*$/develop}
 
     # Files, which coverage results must be ignored (files from other projects).
     # Example: - IGNORE_COVERAGE='*/boost/progress.hpp */filesystem/src/*'
