@@ -40,24 +40,15 @@ class library_info: private boost::noncopyable {
 private:
     std::ifstream f_;
 
-    union {
-        boost::dll::detail::elf_info32 elf_info32_;
-        boost::dll::detail::elf_info64 elf_info64_;
-        boost::dll::detail::pe_info32 pe_info32_;
-        boost::dll::detail::pe_info64 pe_info64_;
-        boost::dll::detail::macho_info32 macho_info32_;
-        boost::dll::detail::macho_info64 macho_info64_;
-    } impl_;
-
     enum {
-        tag_none = 0,
-        tag_elf_info32,
-        tag_elf_info64,
-        tag_pe_info32,
-        tag_pe_info64,
-        tag_macho_info32,
-        tag_macho_info64,
-    } active_impl_;
+        fmt_none = 0,
+        fmt_elf_info32,
+        fmt_elf_info64,
+        fmt_pe_info32,
+        fmt_pe_info64,
+        fmt_macho_info32,
+        fmt_macho_info64,
+    } fmt_;
 
     /// @cond
     inline static void throw_if_in_32bit_impl(boost::true_type /* is_32bit_platform */) {
@@ -90,38 +81,32 @@ private:
     }
 
     void init(bool throw_if_not_native) {
-        active_impl_ = tag_none;
+        fmt_ = fmt_none;
 
         if (boost::dll::detail::elf_info32::parsing_supported(f_)) {
             if (throw_if_not_native) { throw_if_in_windows(); throw_if_in_macos(); }
 
-            impl_.elf_info32_ = { f_ };
-            active_impl_ = tag_elf_info32;
+            fmt_ = fmt_elf_info32;
         } else if (boost::dll::detail::elf_info64::parsing_supported(f_)) {
             if (throw_if_not_native) { throw_if_in_windows(); throw_if_in_macos(); throw_if_in_32bit(); }
 
-            impl_.elf_info64_ = { f_ };
-            active_impl_ = tag_elf_info64;
+            fmt_ = fmt_elf_info64;
         } else if (boost::dll::detail::pe_info32::parsing_supported(f_)) {
             if (throw_if_not_native) { throw_if_in_linux(); throw_if_in_macos(); }
 
-            impl_.pe_info32_ = { f_ };
-            active_impl_ = tag_pe_info32;
+            fmt_ = fmt_pe_info32;
         } else if (boost::dll::detail::pe_info64::parsing_supported(f_)) {
             if (throw_if_not_native) { throw_if_in_linux(); throw_if_in_macos(); throw_if_in_32bit(); }
 
-            impl_.pe_info64_ = { f_ };
-            active_impl_ = tag_pe_info64;
+            fmt_ = fmt_pe_info64;
         } else if (boost::dll::detail::macho_info32::parsing_supported(f_)) {
             if (throw_if_not_native) { throw_if_in_linux(); throw_if_in_windows(); }
 
-            impl_.macho_info32_ = { f_ };
-            active_impl_ = tag_macho_info32;
+            fmt_ = fmt_macho_info32;
         } else if (boost::dll::detail::macho_info64::parsing_supported(f_)) {
             if (throw_if_not_native) { throw_if_in_linux(); throw_if_in_windows(); throw_if_in_32bit(); }
 
-            impl_.macho_info64_ = { f_ };
-            active_impl_ = tag_macho_info64;
+            fmt_ = fmt_macho_info64;
         } else {
             boost::throw_exception(std::runtime_error("Unsupported binary format"));
         }
@@ -148,7 +133,6 @@ public:
         #endif
             std::ios_base::in | std::ios_base::binary
         )
-        , impl_()
     {
         f_.exceptions(
             std::ios_base::failbit
@@ -163,13 +147,13 @@ public:
     * \return List of sections that exist in binary file.
     */
     std::vector<std::string> sections() {
-        switch (active_impl_) {
-        case tag_elf_info32:   return impl_.elf_info32_.sections();
-        case tag_elf_info64:   return impl_.elf_info64.sections();
-        case tag_pe_info32:    return impl_.pe_info32.sections();
-        case tag_pe_info64:    return impl_.pe_info64.sections();
-        case tag_macho_info32: return impl_.macho_info32.sections();
-        case tag_macho_info64: return impl_.macho_info64.sections();
+        switch (fmt_) {
+        case fmt_elf_info32:   return boost::dll::detail::elf_info32::sections(f_);
+        case fmt_elf_info64:   return boost::dll::detail::elf_info64::sections(f_);
+        case fmt_pe_info32:    return boost::dll::detail::pe_info32::sections(f_);
+        case fmt_pe_info64:    return boost::dll::detail::pe_info64::sections(f_);
+        case fmt_macho_info32: return boost::dll::detail::macho_info32::sections(f_);
+        case fmt_macho_info64: return boost::dll::detail::macho_info64::sections(f_);
         };
         BOOST_ASSERT(false);
         BOOST_UNREACHABLE_RETURN(std::vector<std::string>())
@@ -179,13 +163,13 @@ public:
     * \return List of all the exportable symbols from all the sections that exist in binary file.
     */
     std::vector<std::string> symbols() {
-        switch (active_impl_) {
-        case tag_elf_info32:   return impl_.elf_info32_.symbols();
-        case tag_elf_info64:   return impl_.elf_info64.symbols();
-        case tag_pe_info32:    return impl_.pe_info32.symbols();
-        case tag_pe_info64:    return impl_.pe_info64.symbols();
-        case tag_macho_info32: return impl_.macho_info32.symbols();
-        case tag_macho_info64: return impl_.macho_info64.symbols();
+        switch (fmt_) {
+        case fmt_elf_info32:   return boost::dll::detail::elf_info32::symbols(f_);
+        case fmt_elf_info64:   return boost::dll::detail::elf_info64::symbols(f_);
+        case fmt_pe_info32:    return boost::dll::detail::pe_info32::symbols(f_);
+        case fmt_pe_info64:    return boost::dll::detail::pe_info64::symbols(f_);
+        case fmt_macho_info32: return boost::dll::detail::macho_info32::symbols(f_);
+        case fmt_macho_info64: return boost::dll::detail::macho_info64::symbols(f_);
         };
         BOOST_ASSERT(false);
         BOOST_UNREACHABLE_RETURN(std::vector<std::string>())
@@ -196,13 +180,13 @@ public:
     * \return List of symbols from the specified section.
     */
     std::vector<std::string> symbols(const char* section_name) {
-        switch (active_impl_) {
-        case tag_elf_info32:   return impl_.elf_info32_.symbols(section_name);
-        case tag_elf_info64:   return impl_.elf_info64.symbols(section_name);
-        case tag_pe_info32:    return impl_.pe_info32.symbols(section_name);
-        case tag_pe_info64:    return impl_.pe_info64.symbols(section_name);
-        case tag_macho_info32: return impl_.macho_info32.symbols(section_name);
-        case tag_macho_info64: return impl_.macho_info64.symbols(section_name);
+        switch (fmt_) {
+        case fmt_elf_info32:   return boost::dll::detail::elf_info32::symbols(f_, section_name);
+        case fmt_elf_info64:   return boost::dll::detail::elf_info64::symbols(f_, section_name);
+        case fmt_pe_info32:    return boost::dll::detail::pe_info32::symbols(f_, section_name);
+        case fmt_pe_info64:    return boost::dll::detail::pe_info64::symbols(f_, section_name);
+        case fmt_macho_info32: return boost::dll::detail::macho_info32::symbols(f_, section_name);
+        case fmt_macho_info64: return boost::dll::detail::macho_info64::symbols(f_, section_name);
         };
         BOOST_ASSERT(false);
         BOOST_UNREACHABLE_RETURN(std::vector<std::string>())
@@ -211,13 +195,13 @@ public:
 
     //! \overload std::vector<std::string> symbols(const char* section_name)
     std::vector<std::string> symbols(const std::string& section_name) {
-        switch (active_impl_) {
-        case tag_elf_info32:   return impl_.elf_info32_.symbols(section_name.c_str());
-        case tag_elf_info64:   return impl_.elf_info64.symbols(section_name.c_str());
-        case tag_pe_info32:    return impl_.pe_info32.symbols(section_name.c_str());
-        case tag_pe_info64:    return impl_.pe_info64.symbols(section_name.c_str());
-        case tag_macho_info32: return impl_.macho_info32.symbols(section_name.c_str());
-        case tag_macho_info64: return impl_.macho_info64.symbols(section_name.c_str());
+        switch (fmt_) {
+        case fmt_elf_info32:   return boost::dll::detail::elf_info32::symbols(f_, section_name.c_str());
+        case fmt_elf_info64:   return boost::dll::detail::elf_info64::symbols(f_, section_name.c_str());
+        case fmt_pe_info32:    return boost::dll::detail::pe_info32::symbols(f_, section_name.c_str());
+        case fmt_pe_info64:    return boost::dll::detail::pe_info64::symbols(f_, section_name.c_str());
+        case fmt_macho_info32: return boost::dll::detail::macho_info32::symbols(f_, section_name.c_str());
+        case fmt_macho_info64: return boost::dll::detail::macho_info64::symbols(f_, section_name.c_str());
         };
         BOOST_ASSERT(false);
         BOOST_UNREACHABLE_RETURN(std::vector<std::string>())

@@ -110,8 +110,6 @@ class elf_info {
     BOOST_STATIC_CONSTANT(unsigned char, STV_PROTECTED_ = 3);    /* Not preemptible, not exported */
 
 public:
-    std::ifstream& f_; // has to be visible to be a standard-layout struct
-
     static bool parsing_supported(std::ifstream& f) {
         const unsigned char magic_bytes[5] = { 
             0x7f, 'E', 'L', 'F', sizeof(boost::uint32_t) == sizeof(AddressOffsetT) ? 1 : 2
@@ -129,14 +127,14 @@ public:
         return true;
     }
 
-    std::vector<std::string> sections() {
+    static std::vector<std::string> sections(std::ifstream& f) {
         std::vector<std::string> ret;
         std::vector<char> names;
-        sections_names_raw(names);
+        sections_names_raw(f, names);
         
         const char* name_begin = &names[0];
         const char* const name_end = name_begin + names.size();
-        ret.reserve(header().e_shnum);
+        ret.reserve(header(f).e_shnum);
         do {
             ret.push_back(name_begin);
             name_begin += ret.back().size() + 1;
@@ -147,53 +145,53 @@ public:
 
 private:
     template <class T>
-    inline void read_raw(T& value, std::size_t size = sizeof(T)) const {
-        f_.read(reinterpret_cast<char*>(&value), size);
+    static void read_raw(std::ifstream& f, T& value, std::size_t size = sizeof(T)) {
+        f.read(reinterpret_cast<char*>(&value), size);
     }
 
-    inline header_t header() {
+    static header_t header(std::ifstream& f) {
         header_t elf;
 
-        f_.seekg(0);
-        read_raw(elf);
+        f.seekg(0);
+        read_raw(f, elf);
 
         return elf;
     }
 
-    void sections_names_raw(std::vector<char>& sections) {
-        const header_t elf = header();
+    static void sections_names_raw(std::ifstream& f, std::vector<char>& sections) {
+        const header_t elf = header(f);
 
         section_t section_names_section;
-        f_.seekg(elf.e_shoff + elf.e_shstrndx * sizeof(section_t));
-        read_raw(section_names_section);
+        f.seekg(elf.e_shoff + elf.e_shstrndx * sizeof(section_t));
+        read_raw(f, section_names_section);
 
         sections.resize(static_cast<std::size_t>(section_names_section.sh_size));
-        f_.seekg(section_names_section.sh_offset);
-        read_raw(sections[0], static_cast<std::size_t>(section_names_section.sh_size));
+        f.seekg(section_names_section.sh_offset);
+        read_raw(f, sections[0], static_cast<std::size_t>(section_names_section.sh_size));
     }
 
-    void symbols_text(std::vector<symbol_t>& symbols, std::vector<char>& text) {
-        const header_t elf = header();
-        f_.seekg(elf.e_shoff);
+    static void symbols_text(std::ifstream& f, std::vector<symbol_t>& symbols, std::vector<char>& text) {
+        const header_t elf = header(f);
+        f.seekg(elf.e_shoff);
 
         for (std::size_t i = 0; i < elf.e_shnum; ++i) {
             section_t section;
-            read_raw(section);
+            read_raw(f, section);
 
             if (section.sh_type == SHT_SYMTAB_) {
                 symbols.resize(static_cast<std::size_t>(section.sh_size / sizeof(symbol_t)));
 
-                const std::ifstream::pos_type pos = f_.tellg();
-                f_.seekg(section.sh_offset);
-                read_raw(symbols[0], static_cast<std::size_t>(section.sh_size - (section.sh_size % sizeof(symbol_t))) );
-                f_.seekg(pos);
+                const std::ifstream::pos_type pos = f.tellg();
+                f.seekg(section.sh_offset);
+                read_raw(f, symbols[0], static_cast<std::size_t>(section.sh_size - (section.sh_size % sizeof(symbol_t))) );
+                f.seekg(pos);
             } else if (section.sh_type == SHT_STRTAB_) {
                 text.resize(static_cast<std::size_t>(section.sh_size));
 
-                const std::ifstream::pos_type pos = f_.tellg();
-                f_.seekg(section.sh_offset);
-                read_raw(text[0], static_cast<std::size_t>(section.sh_size));
-                f_.seekg(pos);
+                const std::ifstream::pos_type pos = f.tellg();
+                f.seekg(section.sh_offset);
+                read_raw(f, text[0], static_cast<std::size_t>(section.sh_size));
+                f.seekg(pos);
             }
         }
     }
@@ -205,12 +203,12 @@ private:
     }
 
 public:
-    std::vector<std::string> symbols() {
+    static std::vector<std::string> symbols(std::ifstream& f) {
         std::vector<std::string> ret;
 
         std::vector<symbol_t> symbols;
         std::vector<char>   text;
-        symbols_text(symbols, text);
+        symbols_text(f, symbols, text);
 
         ret.reserve(symbols.size());
         for (std::size_t i = 0; i < symbols.size(); ++i) {
@@ -225,21 +223,21 @@ public:
         return ret;
     }
 
-    std::vector<std::string> symbols(const char* section_name) {
+    static std::vector<std::string> symbols(std::ifstream& f, const char* section_name) {
         std::vector<std::string> ret;
         
         std::size_t index = 0;
         std::size_t ptrs_in_section_count = 0;
         {
             std::vector<char> names;
-            sections_names_raw(names);
+            sections_names_raw(f, names);
 
-            const header_t elf = header();
+            const header_t elf = header(f);
 
             for (; index < elf.e_shnum; ++index) {
                 section_t section;
-                f_.seekg(elf.e_shoff + index * sizeof(section_t));
-                read_raw(section);
+                f.seekg(elf.e_shoff + index * sizeof(section_t));
+                read_raw(f, section);
             
                 if (!std::strcmp(&names[0] + section.sh_name, section_name)) {
                     if (!section.sh_entsize) {
@@ -253,7 +251,7 @@ public:
 
         std::vector<symbol_t> symbols;
         std::vector<char>   text;
-        symbols_text(symbols, text);
+        symbols_text(f, symbols, text);
     
         if (ptrs_in_section_count < symbols.size()) {
             ret.reserve(ptrs_in_section_count);

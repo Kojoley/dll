@@ -170,13 +170,11 @@ class pe_info {
     typedef IMAGE_DOS_HEADER_                           dos_t;
 
     template <class T>
-    inline void read_raw(T& value, std::size_t size = sizeof(T)) const {
-        f_.read(reinterpret_cast<char*>(&value), size);
+    static void read_raw(std::ifstream& f, T& value, std::size_t size = sizeof(T)) {
+        f.read(reinterpret_cast<char*>(&value), size);
     }
 
 public:
-    std::ifstream& f_; // has to be visible to be a standard-layout struct
-
     static bool parsing_supported(std::ifstream& f) {
         dos_t dos;
         f.seekg(0);
@@ -196,46 +194,46 @@ public:
     }
 
 private:
-    inline header_t header() {
+    static header_t header(std::ifstream& f) {
         header_t h;
 
         dos_t dos;
-        f_.seekg(0);
-        read_raw(dos);
+        f.seekg(0);
+        read_raw(f, dos);
 
-        f_.seekg(dos.e_lfanew);
-        read_raw(h);
+        f.seekg(dos.e_lfanew);
+        read_raw(f, h);
 
         return h;
     }
     
-    inline exports_t exports(const header_t& h) {
+    static exports_t exports(std::ifstream& f, const header_t& h) {
         exports_t exports;
 
         static const unsigned int IMAGE_DIRECTORY_ENTRY_EXPORT_ = 0;
         const std::size_t exp_virtual_address = h.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT_].VirtualAddress;
 
-        const std::size_t real_offset = get_file_offset(exp_virtual_address, h);
+        const std::size_t real_offset = get_file_offset(f, exp_virtual_address, h);
         BOOST_ASSERT(real_offset);
 
-        f_.seekg(real_offset);
-        read_raw(exports);
+        f.seekg(real_offset);
+        read_raw(f, exports);
 
         return exports;
     }
 
-    std::size_t get_file_offset(std::size_t virtual_address, const header_t& h) {
+    static std::size_t get_file_offset(std::ifstream& f, std::size_t virtual_address, const header_t& h) {
         section_t image_section_header;
         
-        {   // f_.seekg to the beginning on section headers
+        {   // f.seekg to the beginning on section headers
             dos_t dos;
-            f_.seekg(0);
-            read_raw(dos);
-            f_.seekg(dos.e_lfanew + sizeof(header_t));
+            f.seekg(0);
+            read_raw(f, dos);
+            f.seekg(dos.e_lfanew + sizeof(header_t));
         }
 
         for (std::size_t i = 0;i < h.FileHeader.NumberOfSections;++i) {
-            read_raw(image_section_header);
+            read_raw(f, image_section_header);
             if (virtual_address >= image_section_header.VirtualAddress 
                 && virtual_address < image_section_header.VirtualAddress + image_section_header.SizeOfRawData) 
             {
@@ -247,10 +245,10 @@ private:
     }
 
 public:
-    std::vector<std::string> sections() {
+    static std::vector<std::string> sections(std::ifstream& f) {
         std::vector<std::string> ret;
 
-        const header_t h = header();
+        const header_t h = header(f);
         ret.reserve(h.FileHeader.NumberOfSections);
 
         // get names, e.g: .text .rdata .data .rsrc .reloc
@@ -259,7 +257,7 @@ public:
         std::memset(name_helper, 0, sizeof(name_helper));
         for (std::size_t i = 0;i < h.FileHeader.NumberOfSections;++i) {
             // There is no terminating null character if the string is exactly eight characters long
-            read_raw(image_section_header);
+            read_raw(f, image_section_header);
             std::memcpy(name_helper, image_section_header.Name, section_t::IMAGE_SIZEOF_SHORT_NAME_);
             
             if (name_helper[0] != '/') {
@@ -275,32 +273,32 @@ public:
         return ret;
     }
 
-    std::vector<std::string> symbols() {
+    static std::vector<std::string> symbols(std::ifstream& f) {
         std::vector<std::string> ret;
 
-        const header_t h = header();
-        const exports_t exprt = exports(h);
+        const header_t h = header(f);
+        const exports_t exprt = exports(f, h);
         const std::size_t exported_symbols = exprt.NumberOfNames;
-        const std::size_t fixed_names_addr = get_file_offset(exprt.AddressOfNames, h);
+        const std::size_t fixed_names_addr = get_file_offset(f, exprt.AddressOfNames, h);
 
         ret.reserve(exported_symbols);
         boost::dll::detail::DWORD_ name_offset;
         std::string symbol_name;
         for (std::size_t i = 0;i < exported_symbols;++i) {
-            f_.seekg(fixed_names_addr + i * sizeof(name_offset));
-            read_raw(name_offset);
-            f_.seekg(get_file_offset(name_offset, h));
-            getline(f_, symbol_name, '\0');
+            f.seekg(fixed_names_addr + i * sizeof(name_offset));
+            read_raw(f, name_offset);
+            f.seekg(get_file_offset(f, name_offset, h));
+            getline(f, symbol_name, '\0');
             ret.push_back(symbol_name);
         }
 
         return ret;
     }
 
-    std::vector<std::string> symbols(const char* section_name) {
+    static std::vector<std::string> symbols(std::ifstream& f, const char* section_name) {
         std::vector<std::string> ret;
 
-        const header_t h = header();
+        const header_t h = header(f);
         
         std::size_t section_begin_addr = 0;
         std::size_t section_end_addr = 0;
@@ -311,7 +309,7 @@ public:
             std::memset(name_helper, 0, sizeof(name_helper));
             for (std::size_t i = 0;i < h.FileHeader.NumberOfSections;++i) {
                 // There is no terminating null character if the string is exactly eight characters long
-                read_raw(image_section_header);
+                read_raw(f, image_section_header);
                 std::memcpy(name_helper, image_section_header.Name, section_t::IMAGE_SIZEOF_SHORT_NAME_);
                 if (!std::strcmp(section_name, name_helper)) {
                     section_begin_addr = image_section_header.PointerToRawData;
@@ -324,11 +322,11 @@ public:
                 return ret;
         }
 
-        const exports_t exprt = exports(h);
+        const exports_t exprt = exports(f, h);
         const std::size_t exported_symbols = exprt.NumberOfFunctions;
-        const std::size_t fixed_names_addr = get_file_offset(exprt.AddressOfNames, h);
-        const std::size_t fixed_ordinals_addr = get_file_offset(exprt.AddressOfNameOrdinals, h);
-        const std::size_t fixed_functions_addr = get_file_offset(exprt.AddressOfFunctions, h);
+        const std::size_t fixed_names_addr = get_file_offset(f, exprt.AddressOfNames, h);
+        const std::size_t fixed_ordinals_addr = get_file_offset(f, exprt.AddressOfNameOrdinals, h);
+        const std::size_t fixed_functions_addr = get_file_offset(f, exprt.AddressOfFunctions, h);
 
         ret.reserve(exported_symbols);
         boost::dll::detail::DWORD_ ptr;
@@ -336,22 +334,22 @@ public:
         std::string symbol_name;
         for (std::size_t i = 0;i < exported_symbols;++i) {
             // getting ordinal
-            f_.seekg(fixed_ordinals_addr + i * sizeof(ordinal));
-            read_raw(ordinal);
+            f.seekg(fixed_ordinals_addr + i * sizeof(ordinal));
+            read_raw(f, ordinal);
 
             // getting function addr
-            f_.seekg(fixed_functions_addr + ordinal * sizeof(ptr));
-            read_raw(ptr);
-            ptr = static_cast<boost::dll::detail::DWORD_>( get_file_offset(ptr, h) );
+            f.seekg(fixed_functions_addr + ordinal * sizeof(ptr));
+            read_raw(f, ptr);
+            ptr = static_cast<boost::dll::detail::DWORD_>( get_file_offset(f, ptr, h) );
 
             if (ptr >= section_end_addr || ptr < section_begin_addr) {
                 continue;
             }
 
-            f_.seekg(fixed_names_addr + i * sizeof(ptr));
-            read_raw(ptr);
-            f_.seekg(get_file_offset(ptr, h));
-            getline(f_, symbol_name, '\0');
+            f.seekg(fixed_names_addr + i * sizeof(ptr));
+            read_raw(f, ptr);
+            f.seekg(get_file_offset(f, ptr, h));
+            getline(f, symbol_name, '\0');
             ret.push_back(symbol_name);
         }
 
@@ -368,7 +366,7 @@ public:
       MSVCR110D.dll
     */
     /*
-    std::vector<std::string> depend_of(boost::dll::fs::error_code &ec) BOOST_NOEXCEPT {
+    static std::vector<std::string> depend_of(boost::dll::fs::error_code &ec) BOOST_NOEXCEPT {
         std::vector<std::string> ret;
 
         IMAGE_DOS_HEADER* image_dos_header = (IMAGE_DOS_HEADER*)native();
