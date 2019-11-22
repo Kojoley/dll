@@ -19,7 +19,6 @@
 
 #include <boost/assert.hpp>
 #include <boost/cstdint.hpp>
-#include <boost/dll/detail/x_info_interface.hpp>
 
 namespace boost { namespace dll { namespace detail {
 
@@ -164,9 +163,7 @@ typedef IMAGE_NT_HEADERS_template<boost::dll::detail::ULONGLONG_>  IMAGE_NT_HEAD
 
 
 template <class AddressOffsetT>
-class pe_info: public x_info_interface {
-    std::ifstream&    f_;
-
+class pe_info {
     typedef IMAGE_NT_HEADERS_template<AddressOffsetT>   header_t;
     typedef IMAGE_EXPORT_DIRECTORY_                     exports_t;
     typedef IMAGE_SECTION_HEADER_                       section_t;
@@ -178,6 +175,8 @@ class pe_info: public x_info_interface {
     }
 
 public:
+    std::ifstream& f_; // has to be visible to be a standard-layout struct
+
     static bool parsing_supported(std::ifstream& f) {
         dos_t dos;
         f.seekg(0);
@@ -195,11 +194,6 @@ public:
         return h.Signature == 0x00004550 // 'PE00'
                 && h.OptionalHeader.Magic == (sizeof(boost::uint32_t) == sizeof(AddressOffsetT) ? 0x10B : 0x20B);
     }
-
-
-    explicit pe_info(std::ifstream& f) BOOST_NOEXCEPT
-        : f_(f)
-    {}
 
 private:
     inline header_t header() {

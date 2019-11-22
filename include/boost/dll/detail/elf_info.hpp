@@ -18,7 +18,6 @@
 #include <fstream>
 
 #include <boost/cstdint.hpp>
-#include <boost/dll/detail/x_info_interface.hpp>
 
 namespace boost { namespace dll { namespace detail {
 
@@ -92,9 +91,7 @@ typedef Elf_Sym_template<boost::uint32_t> Elf32_Sym_;
 typedef Elf_Sym_template<boost::uint64_t> Elf64_Sym_;
 
 template <class AddressOffsetT>
-class elf_info: public x_info_interface {
-    std::ifstream& f_;
-
+class elf_info {
     typedef boost::dll::detail::Elf_Ehdr_template<AddressOffsetT>  header_t;
     typedef boost::dll::detail::Elf_Shdr_template<AddressOffsetT>  section_t;
     typedef boost::dll::detail::Elf_Sym_template<AddressOffsetT>   symbol_t;
@@ -113,6 +110,8 @@ class elf_info: public x_info_interface {
     BOOST_STATIC_CONSTANT(unsigned char, STV_PROTECTED_ = 3);    /* Not preemptible, not exported */
 
 public:
+    std::ifstream& f_; // has to be visible to be a standard-layout struct
+
     static bool parsing_supported(std::ifstream& f) {
         const unsigned char magic_bytes[5] = { 
             0x7f, 'E', 'L', 'F', sizeof(boost::uint32_t) == sizeof(AddressOffsetT) ? 1 : 2
@@ -129,10 +128,6 @@ public:
 
         return true;
     }
-
-    explicit elf_info(std::ifstream& f) BOOST_NOEXCEPT
-        : f_(f)
-    {}
 
     std::vector<std::string> sections() {
         std::vector<std::string> ret;

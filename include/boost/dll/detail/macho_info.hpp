@@ -18,7 +18,6 @@
 #include <fstream>
 
 #include <boost/cstdint.hpp>
-#include <boost/dll/detail/x_info_interface.hpp>
 
 namespace boost { namespace dll { namespace detail {
 
@@ -157,9 +156,7 @@ typedef nlist_template<boost::uint32_t> nlist_32_;
 typedef nlist_template<boost::uint64_t> nlist_64_;
 
 template <class AddressOffsetT>
-class macho_info: public x_info_interface {
-    std::ifstream& f_;
-
+class macho_info {
     typedef boost::dll::detail::mach_header_template<AddressOffsetT>        header_t;
     typedef boost::dll::detail::load_command_                               load_command_t;
     typedef boost::dll::detail::segment_command_template<AddressOffsetT>    segment_t;
@@ -170,6 +167,8 @@ class macho_info: public x_info_interface {
     BOOST_STATIC_CONSTANT(boost::uint32_t, SEGMENT_CMD_NUMBER = (sizeof(AddressOffsetT) > 4 ? load_command_types::LC_SEGMENT_64_ : load_command_types::LC_SEGMENT_));
 
 public:
+    std::ifstream& f_; // has to be visible to be a standard-layout struct
+
     static bool parsing_supported(std::ifstream& f) {
         static const uint32_t magic_bytes = (sizeof(AddressOffsetT) <= sizeof(uint32_t) ? 0xfeedface : 0xfeedfacf);
 
@@ -178,10 +177,6 @@ public:
         f.read(reinterpret_cast<char*>(&magic), sizeof(magic));
         return (magic_bytes == magic);
     }
-
-    explicit macho_info(std::ifstream& f) BOOST_NOEXCEPT
-        : f_(f)
-    {}
 
 private:
     template <class T>
